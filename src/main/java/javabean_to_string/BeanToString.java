@@ -22,7 +22,7 @@ public class BeanToString {
 
 	private final ToStringCodeGenerator toStringCodeGenerator;
 
-	private final ConcurrentHashMap<Class<?>, IBeanToString<?>> beanToStringObjs = new ConcurrentHashMap<Class<?>, IBeanToString<?>>();
+	private final ConcurrentHashMap<Class<?>, IBeanToString<?>> generators = new ConcurrentHashMap<Class<?>, IBeanToString<?>>();
 
 	public BeanToString() {
 		compiler = ToolProvider.getSystemJavaCompiler();
@@ -32,28 +32,33 @@ public class BeanToString {
 	}
 
 	@SuppressWarnings({ "unchecked" })
-	public String toString(Object bean) throws Exception {
+	public String toString(Object bean) throws RuntimeException {
 		Class<?> beanClazz = bean.getClass();
 		System.out.println("Processing bean " + beanClazz.getSimpleName());
 
-		IBeanToString beanToStringer = beanToStringObjs.get(beanClazz);
-		if (beanToStringObjs.get(beanClazz) == null) {
+		IBeanToString generator = getGeneratorForClass(beanClazz);
+
+		return generator.toString(bean);
+	}
+
+	private IBeanToString getGeneratorForClass(Class<?> beanClazz)
+			throws RuntimeException {
+
+		IBeanToString generator = generators.get(beanClazz);
+		if (generator == null) {
 			synchronized (beanClazz) {
-				beanToStringer = beanToStringObjs.get(beanClazz);
-				if (beanToStringer == null) {
-					beanToStringer = createToStringObj(beanClazz);
-					beanToStringObjs.putIfAbsent(beanClazz, beanToStringer);
+				generator = generators.get(beanClazz);
+				if (generator == null) {
+					generator = createToStringObj(beanClazz);
+					generators.putIfAbsent(beanClazz, generator);
 				}
 			}
 		}
-
-		return beanToStringer.toString(bean);
+		return generator;
 	}
 
 	private IBeanToString createToStringObj(Class<?> beanClazz)
-			throws IllegalAccessException, InvocationTargetException,
-			NoSuchMethodException, InstantiationException,
-			ClassNotFoundException {
+			throws RuntimeException {
 		System.out.println("Creating *NEW* BeanToString implementation for "
 				+ beanClazz.getName());
 
@@ -61,11 +66,24 @@ public class BeanToString {
 		String toStringClassPackage = this.getClass().getPackage().getName();
 		String fullName = toStringClassPackage + "." + toStringClassName;
 
-		String source = toStringCodeGenerator.generateCode(beanClazz,
-				toStringClassPackage, toStringClassName);
+		String source;
+		try {
+			source = toStringCodeGenerator.generateCode(beanClazz,
+					toStringClassPackage, toStringClassName);
+		} catch (IllegalAccessException | InvocationTargetException
+				| NoSuchMethodException e) {
+			throw new RuntimeException("Can not generate toString builder", e);
+		}
+
 		compileClass(toStringClassName, source);
 
-		IBeanToString beanToString = getInstance(fullName);
+		IBeanToString beanToString;
+		try {
+			beanToString = getInstance(fullName);
+		} catch (IllegalAccessException | InstantiationException
+				| ClassNotFoundException e) {
+			throw new RuntimeException("Can not generate toString builder", e);
+		}
 
 		return beanToString;
 	}
