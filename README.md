@@ -10,6 +10,19 @@ This is a tool to generate a string representation of a JavaBean in such way tha
 
 ## Usage
 
+### As implementation of the bean's toString()
+    class MyBean {
+      private BeanToString toStringGenerator = new BeanToString();
+      
+      ...
+      
+      public String toString()
+      {
+        return toStringGenerator.toString(this);
+      }
+    }
+
+### As string generator
     BeanToString generator = new BeanToString();
     
     MyBean bean = .....
